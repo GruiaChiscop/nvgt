@@ -1,7 +1,7 @@
 #!/bin/zsh
 
 function setup_homebrew {
-	brew install autoconf automake libtool upx
+	brew install autoconf automake libtool upx ios-deploy
 }
 
 function setup_openssl {
