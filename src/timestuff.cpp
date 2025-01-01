@@ -270,22 +270,27 @@ asINT64 system_running_milliseconds() {
 uint64_t timer_default_accuracy = Timespan::MILLISECONDS;
 timer::timer() : value(microticks()), accuracy(timer_default_accuracy), paused(false), secure(speedhack_protection) {}
 timer::timer(bool secure) : value(microticks(secure)), accuracy(timer_default_accuracy), paused(false), secure(secure) {}
-timer::timer(int64_t initial_value, bool secure) : value(microticks(secure) + initial_value * timer_default_accuracy), accuracy(timer_default_accuracy), paused(false), secure(secure) {}
-timer::timer(int64_t initial_value, uint64_t initial_accuracy, bool secure) : value(microticks(secure) + initial_value * initial_accuracy), accuracy(initial_accuracy), paused(false), secure(secure) {}
-int64_t timer::get_elapsed() const { return (paused ? value : microticks(secure) - value) / accuracy; }
+timer::timer(int64_t initial_value, bool secure) : value(int64_t(microticks(secure)) - initial_value * timer_default_accuracy), accuracy(timer_default_accuracy), paused(false), secure(secure) {}
+timer::timer(int64_t initial_value, uint64_t initial_accuracy, bool secure) : value(int64_t(microticks(secure)) - initial_value * initial_accuracy), accuracy(initial_accuracy), paused(false), secure(secure) {}
+int64_t timer::get_elapsed() const { return int64_t(paused ? value : microticks(secure) - value) / int64_t(accuracy); }
 bool timer::has_elapsed(int64_t value) const { return get_elapsed() >= value; }
 void timer::force(int64_t new_value) { paused ? value = new_value * accuracy : value = microticks(secure) - new_value * accuracy; }
 void timer::adjust(int64_t new_value) { paused ? value += new_value * accuracy : value -= new_value * accuracy; }
-void timer::restart() { value = microticks(secure); paused = false; }
+void timer::restart() { value = int64_t(microticks(secure)); paused = false; }
 bool timer::get_secure() const { return secure; }
 bool timer::get_paused() const { return paused; }
 bool timer::get_running() const { return !paused; }
 bool timer::pause() { return paused ? false : set_paused(true); }
 bool timer::resume() { return !paused ? false : set_paused(false); }
 void timer::toggle_pause() { value = microticks(secure) - value; paused = !paused; }
+bool timer::tick(int64_t value) {
+	if (!has_elapsed(value)) return false;
+	restart();
+	return true;
+}
 bool timer::set_paused(bool new_paused) {
 	if (paused == new_paused) return false;
-	value = microticks(secure) - value;
+	value = int64_t(microticks(secure)) - value;
 	paused = new_paused;
 	return true;
 }
@@ -308,6 +313,8 @@ template <class T, typename O> int timestuff_opCmp(T* self, O other) {
 	else if (*self > other) return 1;
 	else return 0;
 }
+// Assigns one of the datetime types to a new version of itself E. the current date and time.
+template <class T> void timestuff_reset(T* obj) { (*obj) = T(); }
 
 void RegisterScriptTimestuff(asIScriptEngine* engine) {
 	engine->SetDefaultAccessMask(NVGT_SUBSYSTEM_DATETIME);
@@ -326,7 +333,7 @@ void RegisterScriptTimestuff(asIScriptEngine* engine) {
 	engine->RegisterGlobalFunction(_O("uint64 nanoticks()"), asFUNCTION(SDL_GetTicksNS), asCALL_CDECL);
 	engine->RegisterGlobalFunction(_O("uint64 get_SYSTEM_PERFORMANCE_COUNTER() property"), asFUNCTION(SDL_GetPerformanceCounter), asCALL_CDECL);
 	engine->RegisterGlobalFunction(_O("uint64 get_SYSTEM_PERFORMANCE_FREQUENCY() property"), asFUNCTION(SDL_GetPerformanceFrequency), asCALL_CDECL);
-	engine->RegisterGlobalFunction(_O("void nanosleep(uint64 ns)"), asFUNCTION(SDL_GetTicksNS), asCALL_CDECL);
+	engine->RegisterGlobalFunction(_O("void nanosleep(uint64 ns)"), asFUNCTION(SDL_DelayNS), asCALL_CDECL);
 	engine->SetDefaultAccessMask(NVGT_SUBSYSTEM_OS);
 	engine->RegisterGlobalFunction(_O("uint64 get_TIME_SYSTEM_RUNNING_MILLISECONDS() property"), asFUNCTION(system_running_milliseconds), asCALL_CDECL);
 	engine->RegisterGlobalFunction("int get_TIMEZONE_BASE_OFFSET() property", asFUNCTION(Poco::Timezone::utcOffset), asCALL_CDECL);
@@ -368,6 +375,7 @@ void RegisterScriptTimestuff(asIScriptEngine* engine) {
 	engine->RegisterObjectMethod(_O("timer"), _O("int64 get_elapsed() const property"), asMETHOD(timer, get_elapsed), asCALL_THISCALL);
 	engine->RegisterObjectMethod(_O("timer"), _O("void set_elapsed(int64 time_units) property"), asMETHOD(timer, force), asCALL_THISCALL);
 	engine->RegisterObjectMethod(_O("timer"), _O("bool has_elapsed(int64 time_units) const"), asMETHOD(timer, has_elapsed), asCALL_THISCALL);
+	engine->RegisterObjectMethod(_O("timer"), _O("bool tick(int64 time_units)"), asMETHOD(timer, tick), asCALL_THISCALL);
 	engine->RegisterObjectMethod(_O("timer"), _O("void force(int64 elapsed)"), asMETHOD(timer, force), asCALL_THISCALL);
 	engine->RegisterObjectMethod(_O("timer"), _O("void adjust(int64 mod_elapsed)"), asMETHOD(timer, adjust), asCALL_THISCALL);
 	engine->RegisterObjectMethod(_O("timer"), _O("void restart()"), asMETHOD(timer, restart), asCALL_THISCALL);
@@ -483,6 +491,7 @@ void RegisterScriptTimestuff(asIScriptEngine* engine) {
 	engine->RegisterObjectMethod("datetime", "datetime& opSubAssign(const timespan&in)", asMETHODPR(DateTime, operator-=, (const Timespan&), DateTime&), asCALL_THISCALL);
 	engine->RegisterObjectMethod("datetime", "void make_UTC(int timezone_offset)", asMETHOD(DateTime, makeUTC), asCALL_THISCALL);
 	engine->RegisterObjectMethod("datetime", "void make_local(int timezone_offset)", asMETHOD(DateTime, makeLocal), asCALL_THISCALL);
+	engine->RegisterObjectMethod("datetime", "void reset()", asFUNCTION(timestuff_reset<DateTime>), asCALL_CDECL_OBJFIRST);
 	engine->RegisterGlobalFunction("bool datetime_is_leap_year(int year)", asFUNCTION(DateTime::isLeapYear), asCALL_CDECL);
 	engine->RegisterGlobalFunction("int datetime_days_of_month(int year, int month)", asFUNCTION(DateTime::daysOfMonth), asCALL_CDECL);
 	engine->RegisterGlobalFunction("bool datetime_is_valid(int year, int month, int day, int hour = 0, int minute = 0, int second = 0, int millisecond = 0, int microsecond = 0)", asFUNCTION(DateTime::isValid), asCALL_CDECL);
@@ -522,6 +531,7 @@ void RegisterScriptTimestuff(asIScriptEngine* engine) {
 	engine->RegisterObjectMethod("calendar", "timespan opSub(const calendar&in) const", asMETHODPR(LocalDateTime, operator-, (const LocalDateTime&) const, Timespan), asCALL_THISCALL);
 	engine->RegisterObjectMethod("calendar", "calendar& opAddAssign(const timespan&in)", asMETHODPR(LocalDateTime, operator+=, (const Timespan&), LocalDateTime&), asCALL_THISCALL);
 	engine->RegisterObjectMethod("calendar", "calendar& opSubAssign(const timespan&in)", asMETHODPR(LocalDateTime, operator-=, (const Timespan&), LocalDateTime&), asCALL_THISCALL);
+	engine->RegisterObjectMethod("calendar", "void reset()", asFUNCTION(timestuff_reset<LocalDateTime>), asCALL_CDECL_OBJFIRST);
 
 	engine->RegisterObjectMethod("timestamp", "string format(const string&in fmt, int tzd = 0xffff)", asFUNCTIONPR(DateTimeFormatter::format, (const Timestamp&, const std::string&, int), std::string), asCALL_CDECL_OBJFIRST);
 	engine->RegisterObjectMethod("datetime", "string format(const string&in fmt, int tzd = 0xffff)", asFUNCTIONPR(DateTimeFormatter::format, (const DateTime&, const std::string&, int), std::string), asCALL_CDECL_OBJFIRST);

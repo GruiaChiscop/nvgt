@@ -2,35 +2,25 @@
 
 function setup_angelscript {
 	echo Installing Angelscript...
-	git clone --depth 1 https://github.com/codecat/angelscript-mirror||true
+	git clone https://github.com/codecat/angelscript-mirror||true
 	cd "angelscript-mirror/sdk/angelscript/projects/gnuc"
+	git checkout 270b98a332faa57a747c9265086c7bce49c041d9
 	make -j$(nproc)
 	sudo make install
 	cd ../../../../..
 	echo Angelscript installed.
 }
 
-function setup_bullet {
-	echo Installing bullet3...
-	sudo apt install python3-dev -y
-	git clone --depth 1 https://github.com/bulletphysics/bullet3||true
-	cd bullet3
-	./build_cmake_pybullet_double.sh
+function setup_reactphysics {
+	echo Installing reactphysics3d...
+	git clone --depth 1 https://github.com/DanielChappuis/reactphysics3d||true
+	cd reactphysics3d
+	mkdir build_cmake
 	cd build_cmake
+	cmake -S.. -B. -DCMAKE_BUILD_TYPE=MinSizeRel -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+	cmake --build . --config MinSizeRel -j$(nproc)
 	sudo cmake --install .
 	cd ../..
-}
-
-function setup_enet {
-	echo Installing enet...
-	git clone --depth 1 https://github.com/lsalzman/enet||true
-	cd enet
-	autoreconf -vfi
-	./configure
-	make -j$(nproc)
-	sudo make install
-	cd ..
-	echo Enet installed.
 }
 
 function setup_libgit2 {
@@ -41,7 +31,7 @@ function setup_libgit2 {
 	mkdir -p build
 	cd build
 	cmake .. -DBUILD_TESTS=OFF -DUSE_ICONV=OFF -DBUILD_CLI=OFF -DCMAKE_BUILD_TYPE=Release
-	cmake --build .
+	cmake --build . -j$(nproc)
 	sudo cmake --install .
 	cd ../..
 	rm v1.8.1.tar.gz
@@ -54,7 +44,7 @@ function setup_libplist {
 	tar -xf libplist-2.6.0.tar.bz2
 	cd libplist-2.6.0
 	./configure --without-cython
-	make
+	make -j$(nproc)
 	sudo make install
 	cd ..
 	rm libplist-2.6.0.tar.bz2
@@ -71,7 +61,7 @@ function setup_poco {
 	export CFLAGS="-fPIC -DPOCO_UTIL_NO_XMLCONFIGURATION"
 	export CXXFLAGS="-fPIC -DPOCO_UTIL_NO_XMLCONFIGURATION"
 	cmake .. -DENABLE_TESTS=OFF -DENABLE_SAMPLES=OFF -DCMAKE_BUILD_TYPE=MinSizeRel -DENABLE_PAGECOMPILER=OFF -DENABLE_PAGECOMPILER_FILE2PAGE=OFF -DENABLE_ACTIVERECORD=OFF -DENABLE_ACTIVERECORD_COMPILER=OFF -DENABLE_MONGODB=OFF -DBUILD_SHARED_LIBS=OFF
-	cmake --build .
+	cmake --build . -j$(nproc)
 	sudo cmake --install .
 	cd ../..
 	rm poco-1.13.3-all.tar.gz
@@ -88,7 +78,7 @@ function setup_sdl {
 	cd SDL/build
 	git checkout 4e09e58f62e95a66125dae9ddd3e302603819ffd
 	cmake -DCMAKE_BUILD_TYPE=MinSizeRel -DSDL_SHARED=OFF -DSDL_STATIC=ON -DSDL_TEST_LIBRARY=OFF ..
-	cmake --build . --config MinSizeRel
+	cmake --build . --config MinSizeRel -j$(nproc)
 	sudo make install
 	cd ../..
 	echo SDL installed.
@@ -118,8 +108,7 @@ function setup_nvgt {
 	cd ..
 	rm lindev.tar.gz
 	if ! which scons &> /dev/null; then
-		export PIP_BREAK_SYSTEM_PACKAGES=1
-		pip3 install --user scons
+		pip3 install scons
 	fi
 	scons -s no_upx=0
 	echo NVGT built.
@@ -128,21 +117,24 @@ function setup_nvgt {
 function main {
 	sudo apt update -y
 	set -e
+	python3 -m venv venv --upgrade-deps
+	chmod +x venv/bin/activate
+	source ./venv/bin/activate
 	mkdir -p deps
 	cd deps
 	
 	# Insure required packages are installed for building.
-	sudo apt install build-essential gcc g++ make cmake autoconf libtool python3 python3-pip libsystemd-dev libspeechd-dev -y
+	sudo apt install build-essential gcc g++ make cmake autoconf libtool python3 python3-pip libssl-dev libsystemd-dev libspeechd-dev -y
 	
 	setup_angelscript
-	setup_bullet
-	setup_enet
+	setup_reactphysics
 	setup_libgit2
 	setup_libplist
 	setup_poco
 	setup_sdl
 	setup_nvgt
 	echo Success!
+	deactivate
 	exit 0
 }
 
